@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os, sys, json, re, time, signal, hashlib, logging, logging.handlers
 import traceback, tempfile, textwrap, importlib.util, subprocess
-    try:
-        import resource
-    except ImportError:
-        resource = None  # type: ignore
+try:
+    import resource
+except ImportError:
+    resource = None  # type: ignore
 import functools, threading, concurrent.futures, inspect
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -1147,14 +1147,16 @@ class SecureCodeExecutor:
             with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
                 tmp_path = f.name
                 f.write(wrapper)
-            preexec = cls._set_resource_limits if apply_limits else None
-            result  = subprocess.run(
-                [sys.executable, tmp_path],
-                capture_output=True, text=True,
-                timeout=timeout + cls._SUBPROCESS_GRACE,
-                cwd=str(Config.FILES_DIR),
-                preexec_fn=preexec,
-            )
+            preexec = cls._set_resource_limits if apply_limits and not IS_WINDOWS else None
+            kwargs = {
+                "capture_output": True,
+                "text": True,
+                "timeout": timeout + cls._SUBPROCESS_GRACE,
+                "cwd": str(Config.FILES_DIR),
+            }
+            if not IS_WINDOWS:
+                kwargs["preexec_fn"] = preexec
+            result = subprocess.run([sys.executable, tmp_path], **kwargs)
             return cls._parse_output(result)
         except subprocess.TimeoutExpired:
             return f"Error: Timed out after {timeout}s"
