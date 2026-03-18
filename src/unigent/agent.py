@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import os, sys, json, re, time, signal, hashlib, logging, logging.handlers
-import traceback, tempfile, textwrap, importlib.util, subprocess, resource
+import traceback, tempfile, textwrap, importlib.util, subprocess
+    try:
+        import resource
+    except ImportError:
+        resource = None  # type: ignore
 import functools, threading, concurrent.futures, inspect
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -10,6 +14,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 import shutil
+# Platform detection
+IS_WINDOWS = sys.platform == "win32"
 
 # Detect Colab environment
 try:
