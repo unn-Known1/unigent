@@ -93,6 +93,8 @@ UniGent runs on:
 - **🔀 Retry & Rate Limiting** – Exponential backoff and sliding-window rate limiter.
 - **🤝 Todo & Needs** – Built-in todo list management and user need tracking.
 
+- **🧬 Core Evolution** — Files like SOUL.md, USER.md, MEMORY.md, and HEARTBEAT.md evolve automatically as you use the agent.
+
 ## ⚙️ Configuration
 
 The agent reads configuration from environment variables:

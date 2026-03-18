@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-import sys
-from unigent import main
-
-if __name__ == "__main__":
-    main()
+#!/bin/sh
+# UniGent command-line launcher
+exec python3 -m unigent.agent "$@"

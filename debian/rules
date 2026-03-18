@@ -2,6 +2,23 @@
 %:
 	dh $@
 
-override_dh_auto_install:
-	# No build step; files are pre-built and installed via dh_install
+override_dh_auto_clean:
+	# Remove build artifacts
+	rm -rf build *.egg-info
+
+override_dh_auto_configure:
+	# No custom configuration needed
 	true
+
+override_dh_auto_build:
+	# No compilation needed for pure Python
+	true
+
+override_dh_auto_test:
+	# Skip tests during package build
+	true
+
+override_dh_auto_install:
+	# Install using pip directly into the package staging directory
+	mkdir -p $(CURDIR)/debian/unigent/usr/lib/python3/dist-packages
+	python3 -m pip install . --no-deps --no-build-isolation -t $(CURDIR)/debian/unigent/usr/lib/python3/dist-packages

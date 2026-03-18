@@ -3742,6 +3742,445 @@ def demo() -> None:
 
 print("✓ Entry points ready (setup_api_key, start_chat, setup_colab, demo)")
 setup_api_key()
+
+from typing import Any
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CELL 16 — Core File Evolution System
+#
+#  Problem this solves:
+#    SOUL.md, USER.md, MEMORY.md, HEARTBEAT.md are written once at init with
+#    placeholder content and then NEVER updated again — they stay static no
+#    matter how much you use the agent.
+#
+#  What this cell adds:
+#    CoreEvolutionManager — a lightweight manager that hooks into the Agent
+#    after each run() call and after each heartbeat, using a small LLM call
+#    to extract and persist what matters into the right file.
+#
+#  File responsibilities (what each file SHOULD contain):
+#    SOUL.md      — Agent's learned identity: capabilities, preferred patterns,
+#                   tools it uses most, lessons from past failures
+#    USER.md      — User profile: name/handle, tech stack, preferences,
+#                   common task types, communication style
+#    MEMORY.md    — Long-term facts: key decisions, project names, file
+#                   structures, recurring errors & fixes, important outputs
+#    HEARTBEAT.md — Checklist + log of actual health-check results over time
+#    Need.md      — Agent → User requests (already active)
+#    Tools.md     — Skill registry (already active via skill_create)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class CoreEvolutionManager:
+    """
+    Actively evolves the core identity files after every conversation turn
+    and every heartbeat check, so they grow richer the more you use the agent.
+
+    Integration (add to Agent.__init__ after self.todo = TodoListManager(...)):
+
+        self.core_evo = CoreEvolutionManager(
+            client=self.client,
+            counter=self.counter,
+            rate_limiter=self.rate_limiter,
+        )
+
+    Then at the end of Agent.run(), just before ``return result``:
+
+        self.core_evo.on_turn(task, result, self.history)
+
+    And in HeartbeatManager.check(), after the status dict is built:
+
+        CoreEvolutionManager.on_heartbeat(status)
+    """
+
+    # How many conversation turns between full MEMORY.md consolidations.
+    # Lower = more API calls but fresher memory. Raise if costs matter.
+    CONSOLIDATE_EVERY = 10
+
+    # Maximum characters kept in MEMORY.md before consolidation trims it.
+    MEMORY_MAX_CHARS = 8_000
+
+    # Sections written/managed inside each file
+    _SOUL_SECTION       = "## Learned Behaviours"
+    _USER_SECTION       = "## Observed Preferences"
+    _MEMORY_SECTION     = "## Long-term Memory"
+    _HEARTBEAT_SECTION  = "## Health Log"
+
+    def __init__(
+        self,
+        client:       Any,
+        counter:      APICounter,
+        rate_limiter: RateLimiter | None = None,
+    ) -> None:
+        self._client       = client
+        self._counter      = counter
+        self._rate_limiter = rate_limiter
+        self._turn_count   = 0
+
+    # ── Public hooks ─────────────────────────────────────────────────
+
+    def on_turn(self, task: str, result: str, history: list[dict]) -> None:
+        """
+        Called after every ``Agent.run()`` completes.
+        Extracts facts from the exchange and updates MEMORY.md and USER.md.
+        Every ``CONSOLIDATE_EVERY`` turns it also re-summarises MEMORY.md
+        and refreshes SOUL.md with observed behavioural patterns.
+        """
+        self._turn_count += 1
+        try:
+            self._update_memory(task, result)
+            self._update_user_profile(task, result)
+            if self._turn_count % self.CONSOLIDATE_EVERY == 0:
+                self._consolidate_memory()
+                self._update_soul(history)
+        except Exception as e:
+            logger.warning(f"CoreEvolution.on_turn failed: {e}")
+
+    @staticmethod
+    def on_heartbeat(status: dict[str, Any]) -> None:
+        """
+        Called after every ``HeartbeatManager.check()`` completes.
+        Appends a timestamped health snapshot to HEARTBEAT.md.
+        No LLM call — pure structured write.
+        """
+        try:
+            CoreEvolutionManager._append_heartbeat_log(status)
+        except Exception as e:
+            logger.warning(f"CoreEvolution.on_heartbeat failed: {e}")
+
+    # ── MEMORY.md ─────────────────────────────────────────────────────
+
+    def _update_memory(self, task: str, result: str) -> None:
+        """
+        Ask the LLM to extract up to 5 bullet-point facts worth remembering
+        from this exchange and append them to MEMORY.md.
+        Skips trivial exchanges (greetings, status checks, very short results).
+        """
+        if len(result) < 80 or task.lower() in ("status", "stats", "todo", "progress"):
+            return  # Nothing worth persisting
+
+        prompt = (
+            "Extract up to 5 concrete facts worth remembering long-term from this "
+            "exchange. Focus on: file names/paths created or modified, key decisions "
+            "made, errors encountered and how they were fixed, project names, "
+            "important configurations. Ignore pleasantries and status checks.\n\n"
+            f"USER TASK:\n{task[:600]}\n\n"
+            f"AGENT RESULT (first 800 chars):\n{result[:800]}\n\n"
+            "Reply with ONLY a markdown bullet list (- fact). "
+            "If nothing is worth remembering, reply with exactly: SKIP"
+        )
+        response = self._llm(prompt, max_tokens=300)
+        if not response or response.strip() == "SKIP":
+            return
+
+        path    = Config.CORE_DIR / "MEMORY.md"
+        content = FileManager.read_file(path, default="")
+        ts      = datetime.now().strftime("%Y-%m-%d %H:%M")
+        entry   = f"\n### [{ts}] Turn {self._turn_count}\n{response.strip()}\n"
+
+        if self._MEMORY_SECTION in content:
+            updated = content.replace(
+                self._MEMORY_SECTION,
+                self._MEMORY_SECTION + entry,
+                1,
+            )
+        else:
+            updated = content + f"\n{self._MEMORY_SECTION}\n{entry}"
+
+        FileManager.write_file(path, updated)
+        logger.info(f"MEMORY.md updated (turn {self._turn_count})")
+
+    def _consolidate_memory(self) -> None:
+        """
+        When MEMORY.md exceeds ``MEMORY_MAX_CHARS``, use the LLM to produce
+        a condensed summary, replacing the verbose history with a tight digest.
+        Keeps the last 2 turns verbatim so recent context is never lost.
+        """
+        path    = Config.CORE_DIR / "MEMORY.md"
+        content = FileManager.read_file(path, default="")
+
+        if len(content) < self.MEMORY_MAX_CHARS:
+            return  # Not large enough to need consolidation yet
+
+        prompt = (
+            "The following is a long-term memory log for an AI agent. "
+            "Consolidate it into a tight, structured summary (max 600 words) "
+            "preserving all unique facts: project names, file paths, key decisions, "
+            "recurring errors, user preferences. Discard duplicates and vague entries.\n\n"
+            f"MEMORY LOG:\n{content[:6000]}\n\n"
+            "Reply with ONLY the consolidated markdown content under the heading "
+            f"'{self._MEMORY_SECTION}'."
+        )
+        consolidated = self._llm(prompt, max_tokens=700)
+        if not consolidated:
+            return
+
+        ts      = datetime.now().strftime("%Y-%m-%d %H:%M")
+        updated = (
+            f"# MEMORY.md\n"
+            f"*Last consolidated: {ts} (turn {self._turn_count})*\n\n"
+            + consolidated.strip() + "\n"
+        )
+        FileManager.write_file(path, updated)
+        logger.info(f"MEMORY.md consolidated at turn {self._turn_count}")
+
+    # ── USER.md ───────────────────────────────────────────────────────
+
+    def _update_user_profile(self, task: str, result: str) -> None:
+        """
+        Infer user preferences and profile signals from the task phrasing
+        and update USER.md. Only writes when something genuinely new is
+        detected — avoids redundant rewrites.
+        """
+        prompt = (
+            "From this single agent exchange, identify any NEW signals about the user: "
+            "their tech stack, preferred language/framework, working style, project type, "
+            "communication preferences (terse vs verbose), expertise level. "
+            "Only report things not already obvious from context.\n\n"
+            f"TASK: {task[:400]}\n"
+            f"RESULT (first 300 chars): {result[:300]}\n\n"
+            "Reply with ONLY a markdown bullet list (- observation). "
+            "If nothing new is detectable, reply exactly: SKIP"
+        )
+        response = self._llm(prompt, max_tokens=200)
+        if not response or response.strip() == "SKIP":
+            return
+
+        path    = Config.CORE_DIR / "USER.md"
+        content = FileManager.read_file(path, default="")
+        ts      = datetime.now().strftime("%Y-%m-%d")
+        entry   = f"\n#### [{ts}]\n{response.strip()}\n"
+
+        if self._USER_SECTION in content:
+            updated = content.replace(
+                self._USER_SECTION,
+                self._USER_SECTION + entry,
+                1,
+            )
+        else:
+            updated = content + f"\n{self._USER_SECTION}\n{entry}"
+
+        FileManager.write_file(path, updated)
+        logger.info("USER.md updated with new profile signals")
+
+    # ── SOUL.md ───────────────────────────────────────────────────────
+
+    def _update_soul(self, history: list[dict]) -> None:
+        """
+        Every ``CONSOLIDATE_EVERY`` turns, reflect on recent conversation
+        history and update SOUL.md with observed behavioural patterns —
+        which tools work well, recurring task types, successful strategies.
+        """
+        if not history:
+            return
+
+        # Build a compact transcript of the recent history
+        lines: list[str] = []
+        for msg in history[-30:]:
+            role    = msg.get("role", "")
+            content = msg.get("content") or ""
+            if isinstance(content, list):
+                content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+            if role in ("user", "assistant") and content:
+                lines.append(f"{role.upper()}: {str(content)[:200]}")
+            elif role == "tool" and content:
+                lines.append(f"TOOL RESULT: {str(content)[:120]}")
+
+        transcript = "\n".join(lines)
+
+        prompt = (
+            "Based on this recent conversation history, identify 3-5 behavioural "
+            "patterns for the AI agent: which tools it uses most effectively, "
+            "what task types it handles well, any patterns in how it breaks down "
+            "problems, recurring strategies that work. Be specific and actionable.\n\n"
+            f"HISTORY:\n{transcript}\n\n"
+            "Reply with ONLY a markdown bullet list under the heading "
+            f"'{self._SOUL_SECTION}'."
+        )
+        response = self._llm(prompt, max_tokens=350)
+        if not response:
+            return
+
+        path    = Config.CORE_DIR / "SOUL.md"
+        content = FileManager.read_file(path, default="")
+        ts      = datetime.now().strftime("%Y-%m-%d %H:%M")
+        entry   = f"\n#### Observed at {ts} (turn {self._turn_count})\n{response.strip()}\n"
+
+        if self._SOUL_SECTION in content:
+            updated = content.replace(
+                self._SOUL_SECTION,
+                self._SOUL_SECTION + entry,
+                1,
+            )
+        else:
+            updated = content + f"\n{self._SOUL_SECTION}\n{entry}"
+
+        FileManager.write_file(path, updated)
+        logger.info(f"SOUL.md updated at turn {self._turn_count}")
+
+    # ── HEARTBEAT.md ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _append_heartbeat_log(status: dict[str, Any]) -> None:
+        """
+        Write a concise structured snapshot of the heartbeat result into
+        HEARTBEAT.md so there is a running log of system health over time.
+        """
+        path    = Config.CORE_DIR / "HEARTBEAT.md"
+        content = FileManager.read_file(path, default="")
+        ts      = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        checks  = status.get("checks", {})
+        actions = status.get("actions", [])
+        overall = "⚠ ATTENTION" if status.get("action_required") else "✓ OK"
+
+        check_lines = "\n".join(
+            f"  - {k}: {v}" for k, v in checks.items()
+        )
+        action_lines = (
+            "\n".join(f"  - {a}" for a in actions)
+            if actions else "  - none"
+        )
+        entry = (
+            f"\n### [{ts}] {overall}\n"
+            f"**Checks:**\n{check_lines}\n"
+            f"**Actions required:**\n{action_lines}\n"
+        )
+
+        section = "## Health Log"
+        if section in content:
+            updated = content.replace(section, section + entry, 1)
+        else:
+            updated = content + f"\n{section}\n{entry}"
+
+        FileManager.write_file(path, updated)
+
+    # ── LLM helper ───────────────────────────────────────────────────
+
+    def _llm(self, prompt: str, max_tokens: int = 300) -> str | None:
+        """
+        Make a lightweight, non-streaming LLM call for extraction tasks.
+        Uses a separate counter record tagged as 'evolution' so it doesn't
+        inflate the main agent request stats.
+        """
+        try:
+            if self._rate_limiter:
+                self._rate_limiter.wait_if_needed()
+
+            resp = self._client.chat.completions.create(
+                model=Config.MODEL,
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = resp.choices[0].message.content or ""
+
+            # Record tokens but mark as evolution overhead, not user requests
+            usage = getattr(resp, "usage", None)
+            if usage:
+                self._counter.record(
+                    model=Config.MODEL,
+                    tokens_in=getattr(usage, "prompt_tokens", 0) or 0,
+                    tokens_out=getattr(usage, "completion_tokens", 0) or 0,
+                )
+            return text.strip() if text.strip() else None
+
+        except Exception as e:
+            logger.warning(f"CoreEvolution LLM call failed: {e}")
+            return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Patch Agent and HeartbeatManager to wire in CoreEvolutionManager
+#
+#  We patch rather than rewrite so this cell is self-contained and can be
+#  dropped into any existing notebook without touching cells 9–12.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 1. Patch Agent.__init__ to create self.core_evo ──────────────────────────
+_original_agent_init = Agent.__init__
+
+def _patched_agent_init(self, verbose: bool = True, stream: bool = True) -> None:
+    _original_agent_init(self, verbose=verbose, stream=stream)
+    self.core_evo = CoreEvolutionManager(
+        client=self.client,
+        counter=self.counter,
+        rate_limiter=self.rate_limiter,
+    )
+    logger.info("CoreEvolutionManager attached to agent")
+
+Agent.__init__ = _patched_agent_init
+
+
+# ── 2. Patch Agent.run to call core_evo.on_turn after each response ───────────
+_original_agent_run = Agent.run
+
+def _patched_agent_run(self, task: str) -> str:
+    result = _original_agent_run(self, task)
+    if hasattr(self, "core_evo"):
+        self.core_evo.on_turn(task, result, self.history)
+    return result
+
+Agent.run = _patched_agent_run
+
+
+# ── 3. Patch HeartbeatManager.check to call on_heartbeat after each check ────
+_original_hb_check = HeartbeatManager.check.__func__
+
+@staticmethod
+def _patched_hb_check(tools_store=None):
+    status = _original_hb_check(tools_store)
+    CoreEvolutionManager.on_heartbeat(status)
+    return status
+
+HeartbeatManager.check = _patched_hb_check
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Manual helpers — call these directly if you want immediate updates
+# ══════════════════════════════════════════════════════════════════════════════
+
+def evolve_now(agent: "Agent") -> None:
+    """
+    Force an immediate full evolution cycle:
+    consolidate MEMORY.md, update SOUL.md, update HEARTBEAT.md.
+    Useful to call at the end of a long work session.
+
+    Usage:  evolve_now(agent)
+    """
+    print("🧬 Running full evolution cycle…")
+    evo = agent.core_evo if hasattr(agent, "core_evo") else CoreEvolutionManager(
+        client=agent.client, counter=agent.counter, rate_limiter=agent.rate_limiter,
+    )
+    evo._consolidate_memory()
+    evo._update_soul(agent.history)
+    CoreEvolutionManager.on_heartbeat(HeartbeatManager.check(agent.tools_store))
+    print("✓ MEMORY.md consolidated")
+    print("✓ SOUL.md updated")
+    print("✓ HEARTBEAT.md logged")
+
+
+def show_core_files(agent: "Agent" | None = None) -> None:
+    """
+    Pretty-print all 6 core files so you can see their current state.
+
+    Usage:  show_core_files()          # reads files directly
+            show_core_files(agent)     # same, just for convenience
+    """
+    files = ["SOUL.md", "USER.md", "MEMORY.md", "HEARTBEAT.md", "Need.md", "Tools.md"]
+    sep   = "─" * 60
+    for fname in files:
+        path    = Config.CORE_DIR / fname
+        content = FileManager.read_file(path, default="*(file missing)*")
+        print(f"\n{sep}\n📄  {fname}\n{sep}")
+        print(content[:2000])
+        if len(content) > 2000:
+            print(f"  … [{len(content) - 2000:,} more chars — open the file to see all]")
+
+
+print("✓ CoreEvolutionManager ready")
+print("  Core files will now evolve automatically as you use the agent.")
+print("  Call evolve_now(agent) at any time to force a full cycle.")
+print("  Call show_core_files() to inspect the current state of all files.")
 def main():
     # ── CLI shortcut: python notebook.py demo ────────────────────────
     if len(sys.argv) > 1 and sys.argv[1] == "demo":

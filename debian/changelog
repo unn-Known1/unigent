@@ -1,4 +1,14 @@
-unigent (0.1.0-1) UNRELEASED; urgency=medium
+unigent (0.2.0) UNRELEASED; urgency=medium
+
+  * Added CoreEvolutionManager for dynamic core file evolution
+  * Added cross-platform support (Linux, macOS, Windows)
+  * Fixed Windows compatibility (resource, preexec_fn)
+  * Fixed CI artifact path (dist/*.deb)
+  * Added import shutil fix
+
+ -- root <root@6211f3bf64da>  Wed, 18 Mar 2026 20:50:00 +0000
+
+unigent (0.1.0) UNRELEASED; urgency=medium
 
   * Initial release.
 
