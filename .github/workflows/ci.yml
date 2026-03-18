@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y devscripts build-essential debhelper dh-python python3-all python3-setuptools
+        pip3 install --upgrade pip
+        pip3 install build
+        pip3 install openai requests
+
+    - name: Lint with flake8 (optional)
+      run: |
+        pip3 install flake8
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      # If flake8 not critical, continue even if fails
+      continue-on-error: true
+
+    - name: Build Debian package
+      run: |
+        dpkg-buildpackage -b -us -uc
+        ls ..
+
+    - name: Upload Debian package
+      uses: actions/upload-artifact@v4
+      with:
+        name: deb-package
+        path: ../*.deb

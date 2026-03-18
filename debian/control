@@ -1,0 +1,16 @@
+Source: unigent
+Section: python
+Priority: optional
+Maintainer: UniGent Team <support@example.com>
+Build-Depends: debhelper (>= 13), python3, python3-setuptools, python3-all
+Standards-Version: 4.6.0
+
+Package: unigent
+Architecture: all
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, python3 (>= 3.10), python3-requests
+Description: UniGent Autonomous AI Agent
+ A universal autonomous AI agent powered by NVIDIA NIM API.
+ It features streaming responses, persistent memory, file operations, shell commands, web search, parallel tool execution, and more.
+ Note: This package requires the 'openai' Python package, which is not available from Debian.
+ Install it via pip: pip3 install openai
