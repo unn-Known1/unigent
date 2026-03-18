@@ -65,6 +65,17 @@ export NVIDIA_API_KEY="your_nvidia_api_key_here"
 
 You can obtain a free API key from [NVIDIA Build](https://build.nvidia.com).
 
+
+## 🖥️ Supported Platforms
+
+UniGent runs on:
+
+- **Linux** (Ubuntu, Debian, Fedora, etc.)
+- **macOS** (10.15+)
+- **Windows** (10+ with Python 3.10+)
+
+> Note: On Windows, resource limits are not applied; all other features work identically.
+
 ## ✨ Features
 
 - **🔊 Streaming Responses** – Real-time token streaming with live status updates.
