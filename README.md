@@ -1,6 +1,6 @@
 <!--
 UniGent AI Agent
-SEO: autonomous AI agent, NVIDIA NIM, streaming responses, persistent memory, file operations, shell commands, web search, parallel execution, Debian package, Ubuntu, Python, openai, LLM agent, developer tools, AI assistant, local AI, chat AI, code assistant, task automation
+SEO: autonomous AI agent, NVIDIA NIM, streaming responses, persistent memory, file operations, shell commands, web search, parallel execution, Debian package, Ubuntu, Python, openai, LLM agent, developer tools, AI assistant, local AI, chat AI, code assistant, task automation, core evolution, auto-updating identity, agent learning, cross-platform, arm64, amd64
 -->
 <div align="center">
 
@@ -8,12 +8,12 @@ SEO: autonomous AI agent, NVIDIA NIM, streaming responses, persistent memory, fi
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Debian Package](https://img.shields.io/badge/Debian-0.1.0-blue?logo=debian)](https://github.com/unn-Known1/unigent/releases)
+[![Debian Package](https://img.shields.io/badge/Debian-0.2.0-blue?logo=debian)](https://github.com/unn-Known1/unigent/releases)
 [![GitHub issues](https://img.shields.io/github/issues/unn-Known1/unigent.svg)](https://github.com/unn-Known1/unigent/issues)
 [![GitHub last commit](https://img.shields.io/github/last-commit/unn-Known1/unigent.svg)](https://github.com/unn-Known1/unigent/commits)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-**A universal autonomous AI agent powered by NVIDIA NIM API with streaming responses, persistent memory, file operations, shell commands, web search, parallel tool execution, and robust logging.** Designed for developers who need a powerful local AI assistant that integrates seamlessly into their workflow.
+**A universal autonomous AI agent powered by NVIDIA NIM API with streaming responses, persistent memory, file operations, shell commands, web search, parallel tool execution, robust logging, and a self-improving Core Evolution System.** Designed for developers who need a powerful local AI assistant that integrates seamlessly into their workflow.
 
 ---
 
@@ -30,10 +30,10 @@ Download and install the `.deb` package from the [latest release](https://github
 ```bash
 # Install dependencies
 sudo apt-get update
-sudo apt-get install -y python3-requests
+sudo apt-get install -y python3-requests python3-dotenv
 
 # Install the deb package
-sudo dpkg -i unigent_0.1.0-1_all.deb
+sudo dpkg -i unigent_0.2.0_all.deb
 ```
 
 #### Option 2: Python Package
@@ -42,7 +42,7 @@ sudo dpkg -i unigent_0.1.0-1_all.deb
 # Clone and install
 git clone https://github.com/unn-Known1/unigent.git
 cd unigent
-pip3 install .
+pip3 install -e .   # or: pip3 install .
 ```
 
 > **Note:** The Python package requires the `openai` library (`pip3 install openai`).
@@ -65,12 +65,11 @@ export NVIDIA_API_KEY="your_nvidia_api_key_here"
 
 You can obtain a free API key from [NVIDIA Build](https://build.nvidia.com).
 
-
 ## 🖥️ Supported Platforms
 
 UniGent runs on:
 
-- **Linux** (Ubuntu, Debian, Fedora, etc.)
+- **Linux** (Ubuntu, Debian, Fedora, etc.) – amd64 & arm64
 - **macOS** (10.15+)
 - **Windows** (10+ with Python 3.10+)
 
@@ -78,22 +77,21 @@ UniGent runs on:
 
 ## ✨ Features
 
-- **🔊 Streaming Responses** – Real-time token streaming with live status updates.
-- **💾 Persistent Memory** – JSON-line based key-value store with tagging and fuzzy search.
+- **🔊 Streaming Responses** – Real-time token streaming with live, in-place status bar showing tokens/second and accumulated counts.
+- **🧬 Core Evolution System** – SOUL.md, USER.md, MEMORY.md, and HEARTBEAT.md evolve automatically as you use the agent, capturing learned behaviours, user preferences, long-term facts, and health logs.
+- **📊 Live Status Bar** – In-terminal progress display with request number, thinking/response token counts, and throughput.
+- **📈 Structured Logging** – JSON‑line log files with rotation, daily logs, and colour‑coded console output.
+- **💾 Persistent Memory** – JSON‑line based key‑value store with tagging and fuzzy search.
 - **📁 File Operations** – Read, write, delete, search files within a sandboxed workspace.
 - **⚡ Shell Commands** – Safe execution of shell commands with blocklist and timeout.
-- **🌐 Web Tools** – Built-in web search (`web_search`) and fetch (`web_fetch`).
-- **🔧 Sub-tool System** – Create and run custom Python tools dynamically.
-- **⚙️ Skills System** – Extensible skill architecture with validation and auto-reload.
-- **📊 Live Status Bar** – Real-time API usage stats and context token monitoring.
+- **🌐 Web Tools** – Built‑in web search (`web_search`) and fetch (`web_fetch`).
+- **🔧 Sub‑tool System** – Create and run custom Python tools dynamically; cached results with TTL.
+- **⚙️ Skills System** – Extensible skill architecture with validation and auto‑reload.
 - **🛡️ Security Hardening** – Secret management, code sandboxing, and secure defaults.
 - **🔄 Parallel API Calls** – Execute multiple tasks concurrently for speed.
-- **💓 Heartbeat Manager** – Periodic health checks and log rotation.
-- **📈 Structured Logging** – JSON-structured logs with rotating file handlers and color console output.
-- **🔀 Retry & Rate Limiting** – Exponential backoff and sliding-window rate limiter.
-- **🤝 Todo & Needs** – Built-in todo list management and user need tracking.
-
-- **🧬 Core Evolution** — Files like SOUL.md, USER.md, MEMORY.md, and HEARTBEAT.md evolve automatically as you use the agent.
+- **💓 Heartbeat Manager** – Periodic health checks, resource monitoring, and log rotation.
+- **🔀 Retry & Rate Limiting** – Exponential back‑off and sliding‑window rate limiter for robust API usage.
+- **🤝 Todo & Needs** – Built‑in todo list management and user need tracking.
 
 ## ⚙️ Configuration
 
@@ -110,8 +108,30 @@ The agent reads configuration from environment variables:
 | `AGENT_CODE_TIMEOUT` | `60` | Python code execution timeout (seconds) |
 | `AGENT_SHELL_TIMEOUT` | `120` | Shell command timeout (seconds) |
 | `AGENT_WEB_TIMEOUT` | `20` | Web request timeout (seconds) |
-| `AGENT_LOG_LEVEL` | `DEBUG` | Log level (DEBUG, INFO, WARNING, ERROR) |
+| `AGENT_LOG_LEVEL` | `DEBUG` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `AGENT_CTX_BUDGET` | `245000` | Token budget for context window |
+| `AGENT_HEARTBEAT_INTERVAL` | `1800` | Health check interval (seconds) |
+
+## 📁 Core Files
+
+The agent maintains a set of core identity files in `<workspace>/core/` that evolve during use:
+
+| File | Purpose |
+|------|---------|
+| `SOUL.md` | Learned behaviours, preferred patterns, and successful strategies |
+| `USER.md` | Inferred user preferences, tech stack, and communication style |
+| `MEMORY.md` | Long‑term facts: project details, decisions, errors & fixes |
+| `HEARTBEAT.md` | Health‑check logs and system status history |
+| `Need.md` | Agent → User requests (managed automatically) |
+| `Tools.md` | Skill registry and tool definitions |
+
+You can trigger an immediate evolution cycle:
+
+```python
+from unigent.agent import evolve_now, show_core_files
+evolve_now(agent)
+show_core_files()
+```
 
 ## 📁 Project Structure
 
@@ -124,7 +144,8 @@ unigent/
 ├── pyproject.toml       # Python project metadata
 ├── README.md
 ├── LICENSE
-└── CHANGELOG.md
+├── CHANGELOG.md
+└── dist/                # Built packages (deb, wheel, sdist)
 ```
 
 ## 🔧 Building the Debian Package
@@ -136,10 +157,20 @@ From the repository root:
 sudo apt-get update
 sudo apt-get install -y devscripts build-essential debhelper dh-python python3-all python3-setuptools
 
-# Build the package
+# Build the package (creates ../unigent_0.2.0_all.deb)
 dpkg-buildpackage -b -us -uc
+```
 
-# The .deb package will be in the parent directory
+## 🧪 Python Packages
+
+Built artifacts are placed in `dist/`:
+
+```bash
+# Build wheel and sdist
+python3 setup.py sdist bdist_wheel
+
+# Install locally for development
+pip3 install -e .
 ```
 
 ## 📚 Documentation
