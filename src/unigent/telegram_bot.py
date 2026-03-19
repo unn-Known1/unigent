@@ -9,7 +9,6 @@ import time
 import traceback
 from pathlib import Path
 from typing import Any
-from typing import Any
 from datetime import datetime
 
 from .agent import Config, logger, FileManager, check_needs
@@ -1113,7 +1112,7 @@ def start_telegram(
 
     # ── Patch Watchdog to notify on restarts ──────────────────────────
     if hub is not None and not getattr(hub.watchdog, "_tg_patched", False):
-        _orig_restart = Watchdog._check_and_restart.__func__
+        _orig_restart = Watchdog._check_and_restart
 
         @staticmethod
         def _notifying_restart(name, thread, restart):
