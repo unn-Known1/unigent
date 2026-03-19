@@ -8,7 +8,7 @@ SEO: autonomous AI agent, NVIDIA NIM, streaming responses, persistent memory, fi
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Debian Package](https://img.shields.io/badge/Debian-0.2.0-blue?logo=debian)](https://github.com/unn-Known1/unigent/releases)
+[![Debian Package](https://img.shields.io/badge/Debian-0.3.0-blue?logo=debian)](https://github.com/unn-Known1/unigent/releases)
 [![GitHub issues](https://img.shields.io/github/issues/unn-Known1/unigent.svg)](https://github.com/unn-Known1/unigent/issues)
 [![GitHub last commit](https://img.shields.io/github/last-commit/unn-Known1/unigent.svg)](https://github.com/unn-Known1/unigent/commits)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -93,6 +93,58 @@ UniGent runs on:
 - **🔀 Retry & Rate Limiting** – Exponential back‑off and sliding‑window rate limiter for robust API usage.
 - **🤝 Todo & Needs** – Built‑in todo list management and user need tracking.
 
+## 🚀 Advanced Automation & Persistence
+
+UniGent now includes powerful automation and remote management features, making it ideal for unattended operation and integration into workflows.
+
+### Session Persistence
+- **Google Drive Backup** — Automatically saves your entire workspace (core files, memory, skills, logs) to Google Drive every 15 minutes.
+- **One‑Click Restore** — After a session reset or crash, simply run `session_start()` to restore everything.
+- **Manual Control** — Trigger saves, list backups, and restore specific snapshots.
+- Perfect for Google Colab environments where `/content/` is ephemeral.
+
+### Automation Hub
+A comprehensive headless automation system built on a task queue:
+- **TaskQueue** — Submit tasks programmatically; view status (pending/running/done), clear queue.
+- **Scheduler** — Schedule tasks to run at fixed intervals (every N minutes) or at specific times (cron‑style).
+- **Need Poller** — Automatically detects pending needs in `Need.md` and feeds them to the agent for autonomous resolution.
+- **Watchdog** — Monitors critical threads and restarts them if they fail unexpectedly.
+- **`autorun()`** — One‑call setup that wires Drive mounting, API key setup, agent initialization, heartbeat, auto‑save, task queue, scheduler, need poller, and watchdog. Also runs an optional startup task.
+
+Example:
+```python
+from unigent.automation import autorun
+
+hub = autorun(
+    tasks=["Analyze recent logs", "Update MEMORY.md"],
+    schedule=[(60, "Summarize work"), ("18:00", "Generate daily report")],
+)
+# Later: hub.status(), hub.submit("new task"), hub.stop_all()
+```
+
+### Live Log Streaming
+Real‑time log monitoring without leaving your workflow:
+- **LogStreamer widget** (Jupyter notebooks) — auto‑refreshing rich panel with level and text filters.
+- **`tail_logs(n)`** — Quick snapshot of the last N log lines.
+- **`watch_logs()`** — Blocking live tail similar to `tail -f` in a terminal.
+All share the same log source and respect the agent's structured logging.
+
+### Telegram Remote Control
+Control your agent entirely from Telegram:
+- Send tasks, receive results.
+- Stream logs or request snapshots; set level/text filters.
+- Download any workspace file.
+- View full status dashboard.
+- All secured by a chat‑ID whitelist; no one else can control your bot.
+
+Setup (one‑time):
+1. Create a bot via @BotFather → copy token.
+2. Start a chat with your bot → obtain your chat ID (send `/id` to see it).
+3. Add to environment or Colab Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+4. Launch: `from unigent.telegram_bot import start_telegram; tg = start_telegram(hub)`.
+
+The bot supports an interactive control panel with inline buttons for queue, logs, save, and master stop.
+
 ## ⚙️ Configuration
 
 The agent reads configuration from environment variables:
@@ -157,7 +209,7 @@ From the repository root:
 sudo apt-get update
 sudo apt-get install -y devscripts build-essential debhelper dh-python python3-all python3-setuptools
 
-# Build the package (creates ../unigent_0.2.0_all.deb)
+# Build the package (creates ../unigent_0.3.0_all.deb)
 dpkg-buildpackage -b -us -uc
 ```
 

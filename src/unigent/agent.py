@@ -4124,7 +4124,7 @@ Agent.run = _patched_agent_run
 
 
 # ── 3. Patch HeartbeatManager.check to call on_heartbeat after each check ────
-_original_hb_check = HeartbeatManager.check.__func__
+_original_hb_check = HeartbeatManager.check
 
 @staticmethod
 def _patched_hb_check(tools_store=None):
