@@ -1,3 +1,18 @@
+unigent (0.4.0) UNRELEASED; urgency=medium
+
+  * Added: Cost tracking via Config.MODEL_COSTS and APICounter cost_usd.
+  * Added: APICounter persistence methods (persist_stats, load_historical).
+  * Added: Enhanced retry_api decorator with Retry-After support and jitter.
+  * Added: Per-tool timeout overrides via Config.TOOL_TIMEOUTS.
+  * Added: Config.cost_for() and tool_timeout() helper methods.
+  * Changed: Agent initializes APICounter with Config.cost_for.
+  * Changed: HEARTBEAT_INTERVAL now clamped to [60, 21600] seconds.
+  * Added: Comprehensive tests for costing, retry, and persistence.
+  * Fixed: Config class indentation and module-level execution.
+  * Fixed: Duplicate imports and staticmethod patch errors.
+
+ -- root <root@ unknown>  Wed, 20 Mar 2026 12:00:00 +0000
+
 unigent (0.2.0) UNRELEASED; urgency=medium
 
   * Added CoreEvolutionManager for dynamic core file evolution

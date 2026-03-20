@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os, sys, json, re, time, signal, hashlib, logging, logging.handlers
+import os, sys, json, re, time, signal, hashlib, logging, logging.handlers, warnings
 import traceback, tempfile, textwrap, importlib.util, subprocess
 try:
     import resource
@@ -80,7 +80,42 @@ class Config:
     API_RETRY_MAX            = 5
     API_RETRY_BACKOFF        = 1.5
     SKILLS_CACHE_TTL         = 30.0
-    HEARTBEAT_INTERVAL       = _cfg_int("AGENT_HEARTBEAT_INTERVAL", 1800)
+    HEARTBEAT_INTERVAL = max(60, min(_cfg_int("AGENT_HEARTBEAT_INTERVAL", 1800), 21600))
+
+
+    # Cost per 1M tokens (USD)
+    MODEL_COSTS = {
+        "stepfun-ai/step-3.5-flash": {"in": 0.15, "out": 0.60},
+        "gpt-4o":                    {"in": 2.50, "out": 10.00},
+        "gpt-4o-mini":               {"in": 0.15, "out": 0.60},
+        "claude-opus-4-6":           {"in": 15.00, "out": 75.00},
+        "claude-sonnet-4-6":         {"in": 3.00, "out": 15.00},
+    }
+
+    # Per-tool timeouts (seconds)
+    TOOL_TIMEOUTS = {
+        "web_fetch":      int(os.environ.get("AGENT_TIMEOUT_WEB_FETCH",   "30")),
+        "web_search":     int(os.environ.get("AGENT_TIMEOUT_WEB_SEARCH",  "20")),
+        "execute_python": int(os.environ.get("AGENT_TIMEOUT_PYTHON",      "60")),
+        "shell_run":      int(os.environ.get("AGENT_TIMEOUT_SHELL",      "120")),
+        "browser_fetch":  int(os.environ.get("AGENT_TIMEOUT_BROWSER",     "45")),
+        "sql_query":      int(os.environ.get("AGENT_TIMEOUT_SQL",         "30")),
+    }
+
+    STATS_FILE = BASE_DIR / "stats.jsonl"
+
+
+    # Stats persistence
+    @classmethod
+    def tool_timeout(cls, tool_name):
+        return cls.TOOL_TIMEOUTS.get(tool_name, cls.SHELL_TIMEOUT)
+
+    @classmethod
+    def cost_for(cls, model, tokens_in, tokens_out):
+        pricing = cls.MODEL_COSTS.get(model, {})
+        if not pricing:
+            return 0.0
+        return (tokens_in * pricing["in"] + tokens_out * pricing["out"]) / 1_000_000
 
     @classmethod
     def setup_dirs(cls):
@@ -387,102 +422,105 @@ print("✓ Utilities loaded (retry, rate limiter, cache)")
 # ---------- API Counter ----------
 
 class APICounter:
-    """Thread-safe counter for API requests, token usage, and session statistics."""
+    """Thread-safe counter for API requests, token usage, and cost tracking."""
 
-    def __init__(self) -> None:
-        self._lock              = threading.Lock()
-        self._total:            int              = 0
-        self._errors:           int              = 0
-        self._tokens_in:        int              = 0
-        self._tokens_out:       int              = 0
-        self._tokens_reasoning: int              = 0
-        self._by_model:         dict[str, int]   = {}
-        self._start:            float            = time.time()
+    def __init__(self, cost_calculator=None):
+        self._lock = threading.Lock()
+        self._total = 0
+        self._errors = 0
+        self._tokens_in = 0
+        self._tokens_out = 0
+        self._tokens_reasoning = 0
+        self._by_model = {}
+        self._cost_usd = 0.0
+        self._start = time.time()
+        self._cost_calculator = cost_calculator
+        self._cost_error_logged = False
 
-    # ── Recording ────────────────────────────────────────────────────
-
-    def record(
-        self,
-        model:            str  = "",
-        tokens_in:        int  = 0,
-        tokens_out:       int  = 0,
-        tokens_reasoning: int  = 0,
-        error:            bool = False,
-    ) -> None:
-        """Record a single API call and its token usage."""
+    def record(self, model="", tokens_in=0, tokens_out=0, tokens_reasoning=0, error=False):
+        cost = 0.0
+        if self._cost_calculator:
+            try:
+                cost = self._cost_calculator(model, tokens_in, tokens_out)
+            except Exception as e:
+                with self._lock:
+                    if not self._cost_error_logged:
+                        warnings.warn(f"Cost calculation failed: {e}")
+                        self._cost_error_logged = True
         with self._lock:
             self._total += 1
             if model:
                 self._by_model[model] = self._by_model.get(model, 0) + 1
-            self._tokens_in        += tokens_in
-            self._tokens_out       += tokens_out
+            self._tokens_in += tokens_in
+            self._tokens_out += tokens_out
             self._tokens_reasoning += tokens_reasoning
             if error:
                 self._errors += 1
+            self._cost_usd += cost
 
-    def next_request_number(self) -> int:
-        """Return the number that the *next* request will receive."""
+    def next_request_number(self):
         with self._lock:
             return self._total + 1
 
-    # ── Properties ───────────────────────────────────────────────────
-
     @property
-    def total(self) -> int:
-        """Total number of requests recorded so far."""
-        return self._total
+    def total(self):
+        with self._lock:
+            return self._total
 
-    # ── Reporting ────────────────────────────────────────────────────
-
-    def summary(self) -> dict[str, Any]:
-        """Return a snapshot of all counters as a plain dict."""
+    def summary(self):
+        with self._lock:
+            snap = {
+                "total_requests": self._total,
+                "errors": self._errors,
+                "tokens_prompt": self._tokens_in,
+                "tokens_response": self._tokens_out,
+                "tokens_reasoning": self._tokens_reasoning,
+                "by_model": dict(self._by_model),
+                "cost_usd": self._cost_usd,
+            }
         elapsed = time.time() - self._start
-        tokens_total = self._tokens_in + self._tokens_out + self._tokens_reasoning
+        tokens_total = snap["tokens_prompt"] + snap["tokens_response"] + snap["tokens_reasoning"]
         return {
-            "total_requests":       self._total,
-            "errors":               self._errors,
-            "success":              self._total - self._errors,
-            "by_model":             dict(self._by_model),
-            "tokens_prompt":        self._tokens_in,
-            "tokens_response":      self._tokens_out,
-            "tokens_reasoning":     self._tokens_reasoning,
-            "tokens_total":         tokens_total,
-            "uptime_seconds":       round(elapsed, 1),
-            "avg_requests_per_min": round(self._total / max(elapsed / 60, 0.01), 2),
+            **snap,
+            "success": snap["total_requests"] - snap["errors"],
+            "tokens_total": tokens_total,
+            "uptime_seconds": round(elapsed, 1),
+            "avg_requests_per_min": round(snap["total_requests"] / max(elapsed / 60, 0.01), 2),
         }
 
-    def __str__(self) -> str:
+    def __str__(self):
         s = self.summary()
+        cost_str = f" | ~${s['cost_usd']:.4f}" if s['cost_usd'] > 0 else ""
         return (
             f"Requests: {s['total_requests']} (✓{s['success']} ✗{s['errors']}) | "
-            f"Prompt: {s['tokens_prompt']:,} │ Think: {s['tokens_reasoning']:,} │ "
-            f"Resp: {s['tokens_response']:,} │ Avg: {s['avg_requests_per_min']}/min"
+            f"Prompt: {s['tokens_prompt']:,} | Think: {s['tokens_reasoning']:,} | "
+            f"Resp: {s['tokens_response']:,} | Avg: {s['avg_requests_per_min']}/min{cost_str}"
         )
 
-    # ── Persistence ──────────────────────────────────────────────────
-
-    def persist_stats(self) -> None:
-        """Append the current session summary to the stats file."""
+    def persist_stats(self):
         try:
             entry = json.dumps({**self.summary(), "session_end": datetime.now().isoformat()})
             with open(Config.STATS_FILE, "a", encoding="utf-8") as f:
                 f.write(entry + "\n")
-        except Exception:
-            pass  # Non-fatal — stats are informational only
+        except Exception as e:
+            warnings.warn(f"Failed to persist stats to {Config.STATS_FILE}: {e}")
 
-    def load_historical(self) -> list[dict[str, Any]]:
-        """Return all previously persisted session summaries."""
+    def load_historical(self):
         if not Config.STATS_FILE.exists():
             return []
-        recs: list[dict[str, Any]] = []
-        for line in Config.STATS_FILE.read_text(encoding="utf-8").splitlines():
-            try:
-                recs.append(json.loads(line))
-            except Exception:
-                continue  # Skip malformed lines
+        recs = []
+        try:
+            for line in Config.STATS_FILE.read_text(encoding="utf-8").splitlines():
+                try:
+                    recs.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        except Exception as e:
+            warnings.warn(f"Failed to load historical stats: {e}")
         return recs
 
 
+print("✓ API Counter (with cost tracking) ready")
 # ---------- Live Status Bar ----------
 
 class LiveStatusBar:
@@ -602,6 +640,53 @@ class LiveStatusBar:
 
 
 print("✓ API Counter and Status Bar ready")
+
+
+def _parse_retry_after(exc):
+    """Extract Retry-After value (seconds) from an API exception."""
+    response = getattr(exc, "response", None)
+    if response is not None:
+        headers = getattr(response, "headers", {})
+        ra = headers.get("Retry-After") or headers.get("retry-after")
+        if ra is not None:
+            try:
+                return float(ra)
+            except (ValueError, TypeError):
+                pass
+    msg = str(exc).lower()
+    import re
+    m = re.search(r"retry.{0,10}after[^0-9]*?(\d+(?:\.\d+)?)", msg)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    return None
+
+
+def retry_api(max_retries=None, backoff=None):
+    """Decorator for retrying transient API errors with backoff and jitter."""
+    mr = max_retries if max_retries is not None else Config.API_RETRY_MAX
+    bf = backoff if backoff is not None else Config.API_RETRY_BACKOFF
+
+    def decorator(func):
+        import functools, random, time
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(mr):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    is_last = attempt == mr - 1
+                    is_retryable = any(k in str(e).lower() for k in _RETRYABLE_KEYS)
+                    if not is_retryable or is_last:
+                        raise
+                    retry_after = _parse_retry_after(e)
+                    wait = retry_after if retry_after is not None else (bf ** attempt) + random.uniform(0, 0.5)
+                    print(f"\033[93m  [retry] {attempt + 1}/{mr} after {wait:.1f}s — {e}\033[0m")
+                    time.sleep(wait)
+        return wrapper
+    return decorator
 
 # ---------- General File Manager (unrestricted) ----------
 
@@ -2432,7 +2517,7 @@ Always think before you act. For complex multi-step tasks use the todo list:
         self.shell       = ShellRunner()
         self.differ      = DiffApplier()
         self.rate_limiter = RateLimiter()
-        self.counter     = APICounter()
+        self.counter     = APICounter(cost_calculator=Config.cost_for)
         self.tool_cache  = ToolResultCache()
         self.parallel    = ParallelAPIHandler(
             self.client, self.counter, rate_limiter=self.rate_limiter

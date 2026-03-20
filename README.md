@@ -8,7 +8,7 @@ SEO: autonomous AI agent, NVIDIA NIM, streaming responses, persistent memory, fi
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Debian Package](https://img.shields.io/badge/Debian-0.3.1-blue?logo=debian)](https://github.com/unn-Known1/unigent/releases)
+[![Debian Package](https://img.shields.io/badge/Debian-0.4.0-blue?logo=debian)](https://github.com/unn-Known1/unigent/releases)
 [![GitHub issues](https://img.shields.io/github/issues/unn-Known1/unigent.svg)](https://github.com/unn-Known1/unigent/issues)
 [![GitHub last commit](https://img.shields.io/github/last-commit/unn-Known1/unigent.svg)](https://github.com/unn-Known1/unigent/commits)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -33,7 +33,7 @@ sudo apt-get update
 sudo apt-get install -y python3-requests python3-dotenv
 
 # Install the deb package
-sudo dpkg -i unigent_0.2.0_all.deb
+sudo dpkg -i unigent_0.4.0_all.deb
 ```
 
 #### Option 2: Python Package
@@ -93,7 +93,11 @@ UniGent runs on:
 - **🔀 Retry & Rate Limiting** – Exponential back‑off and sliding‑window rate limiter for robust API usage.
 - **🤝 Todo & Needs** – Built‑in todo list management and user need tracking.
 
-## 🚀 Advanced Automation & Persistence
+- **💰 Cost Tracking** – Monetary cost estimation per request with per‑model pricing.
+    - **📊 APICounter Persistence** – Session statistics saved and can be loaded across restarts.
+    - **⏱️ Per‑Tool Timeouts** – Fine‑grained timeout control through environment variables.
+    - **🔧 Improved Retry** – Robust exponential backoff with jitter and automatic Retry‑After handling.
+    ## 🚀 Advanced Automation & Persistence
 
 UniGent now includes powerful automation and remote management features, making it ideal for unattended operation and integration into workflows.
 

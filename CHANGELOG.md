@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-20
+
+    ### Added
+    - **Cost Tracking**: APICounter now tracks monetary cost using per-model pricing (MODEL_COSTS) and Config.cost_for().
+    - **APICounter Persistence**: New methods persist_stats() and load_historical() to save/load session stats to a JSONL file.
+    - **Enhanced Retry Logic**: New _parse_retry_after() function and improved retry_api decorator with jitter and better Retry-After header handling.
+    - **Per-Tool Timeouts**: Config.TOOL_TIMEOUTS allows overriding timeouts for individual tools via environment variables.
+    - **Config Improvements**: HEARTBEAT_INTERVAL now clamped between 60 and 21600 seconds; added tool_timeout() method.
+    - **Testing**: Added comprehensive tests for cost calculation, retry behavior, and APICounter persistence.
+
+    ### Changed
+    - Agent initializes APICounter with Config.cost_for as the cost calculator.
+    - APICounter summary includes cost_usd and displays in __str__.
+    - Improved error handling in APICounter persistence with warnings.
+
+    ### Fixed
+    - Fixed Config class indentation issues.
+    - Fixed duplicate import warnings.
+    - Fixed staticmethod patch errors in HeartbeatManager and Watchdog.
 ## [0.3.1] - 2026-03-19
 
 ### Fixed
