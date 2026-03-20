@@ -110,9 +110,9 @@ class Config:
     def tool_timeout(cls, tool_name):
         return cls.TOOL_TIMEOUTS.get(tool_name, cls.SHELL_TIMEOUT)
 
-    @classmethod
-    def cost_for(cls, model, tokens_in, tokens_out):
-        pricing = cls.MODEL_COSTS.get(model, {})
+    @staticmethod
+    def cost_for(model, tokens_in, tokens_out):
+        pricing = Config.MODEL_COSTS.get(model, {})
         if not pricing:
             return 0.0
         return (tokens_in * pricing["in"] + tokens_out * pricing["out"]) / 1_000_000
@@ -293,7 +293,7 @@ _RETRYABLE_KEYS: tuple[str, ...] = (
     "429", "rate limit", "too many",
     "503", "502", "500",
     "server error", "overloaded",
-    "timeout", "connection",
+    "timeout", "connection", "service unavailable",
 )
 
 
@@ -678,10 +678,10 @@ def retry_api(max_retries=None, backoff=None):
                     return func(*args, **kwargs)
                 except Exception as e:
                     is_last = attempt == mr - 1
-                    is_retryable = any(k in str(e).lower() for k in _RETRYABLE_KEYS)
+                    retry_after = _parse_retry_after(e)
+                    is_retryable = any(k in str(e).lower() for k in _RETRYABLE_KEYS) or (retry_after is not None)
                     if not is_retryable or is_last:
                         raise
-                    retry_after = _parse_retry_after(e)
                     wait = retry_after if retry_after is not None else (bf ** attempt) + random.uniform(0, 0.5)
                     print(f"\033[93m  [retry] {attempt + 1}/{mr} after {wait:.1f}s — {e}\033[0m")
                     time.sleep(wait)
@@ -2504,6 +2504,8 @@ Always think before you act. For complex multi-step tasks use the todo list:
 
     # ── Construction ──────────────────────────────────────────────────
 
+    manager = None
+
     def __init__(self, verbose: bool = True, stream: bool = True) -> None:
         if not setup_api_key():
             raise RuntimeError("Failed to setup API key")
@@ -2542,6 +2544,13 @@ Always think before you act. For complex multi-step tasks use the todo list:
         )
 
     # ── Core file initialisation ──────────────────────────────────────
+
+    def trigger_heartbeat(self):
+        """Trigger a one-off heartbeat check."""
+        if self.manager is not None:
+            self.manager.system_heartbeat()
+        else:
+            HeartbeatManager.check(self.tools_store)
 
     def _initialize_core_files(self) -> None:
         """Write default core identity files if they don't yet exist."""

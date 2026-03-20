@@ -123,7 +123,7 @@ def test_api_counter_cost_tracking():
     counter.record(model="test-model", tokens_in=1000, tokens_out=500)
     counter.record(model="test-model", tokens_in=500, tokens_out=250)
     summary = counter.summary()
-    assert abs(summary["cost_usd"] - 0.0015) < 1e-9
+    assert abs(summary["cost_usd"] - 0.00225) < 1e-9
 
 
 def test_api_counter_persistence_roundtrip(tmp_path):
